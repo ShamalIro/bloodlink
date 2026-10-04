@@ -1,0 +1,6 @@
+{
+  "name": "bloodlink",
+  "private": true,
+  "workspaces": ["services/*", "gateway", "packages/*"],
+  "scripts": { "dev": "docker-compose -f infra/docker-compose.yml up --build" }
+}

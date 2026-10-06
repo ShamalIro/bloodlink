@@ -1,56 +1,72 @@
 import React from 'react';
-import { View, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { normalizeRole, ROLES, ROUTES } from '../constants';
 import { useAuth } from '../store/AuthContext';
-import { colors } from '../theme';
 import SplashScreen from '../screens/onboarding/SplashScreen';
+import LanguageSelectionScreen from '../screens/onboarding/LanguageSelectionScreen';
+import RoleSelectionScreen from '../screens/onboarding/RoleSelectionScreen';
 import LoginScreen from '../screens/onboarding/LoginScreen';
-
-// Temporary stand-ins; each gets replaced as we build the real screen.
-const Placeholder = ({ name }) => () => (
-  <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-    <Text>{name} (coming next)</Text>
-  </View>
-);
-const RoleSelection = Placeholder({ name: 'Role Selection' });
-const CreateAccount = Placeholder({ name: 'Create Account' });
-const RequesterHome = Placeholder({ name: 'Requester Home' });
+import DonorPhoneLoginScreen from '../screens/onboarding/DonorPhoneLoginScreen';
+import OTPVerificationScreen from '../screens/onboarding/OTPVerificationScreen';
+import CreateAccountScreen from '../screens/onboarding/CreateAccountScreen';
+import RequesterSignupScreen from '../screens/onboarding/RequesterSignupScreen';
+import DonorRegistrationScreen from '../screens/onboarding/DonorRegistrationScreen';
+import CoordinatorSignupScreen from '../screens/onboarding/CoordinatorSignupScreen';
+import NgoSignupScreen from '../screens/onboarding/NgoSignupScreen';
+import RoleHomePendingScreen from '../screens/shared/RoleHomePendingScreen';
+import RequesterNavigator from './RequesterNavigator';
+import DonorNavigator from './DonorNavigator';
 
 const Onboarding = createNativeStackNavigator();
-const Requester = createNativeStackNavigator();
+const Authenticated = createNativeStackNavigator();
 
-const stackOpts = {
-  headerTintColor: colors.primary,
-  headerShadowVisible: false,
-  headerTitle: '',
+const roleHomeRoutes = {
+  [ROLES.DONOR]: ROUTES.DONOR_HOME,
+  [ROLES.REQUESTER]: ROUTES.REQUESTER_HOME,
+  [ROLES.COORDINATOR]: ROUTES.COORDINATOR_DASHBOARD,
+  [ROLES.NGO]: ROUTES.CAMPS_DASHBOARD,
 };
 
 function OnboardingStack() {
   return (
-    <Onboarding.Navigator screenOptions={stackOpts}>
-      {/* Until Role Selection exists, start on Login */}
-      <Onboarding.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-      <Onboarding.Screen name="RoleSelection" component={RoleSelection} />
-      <Onboarding.Screen name="CreateAccount" component={CreateAccount} />
+    <Onboarding.Navigator initialRouteName={ROUTES.LANGUAGE_SELECTION} screenOptions={{ headerShown: false }}>
+      <Onboarding.Screen name={ROUTES.LANGUAGE_SELECTION} component={LanguageSelectionScreen} />
+      <Onboarding.Screen name={ROUTES.ROLE_SELECTION} component={RoleSelectionScreen} />
+      <Onboarding.Screen name={ROUTES.LOGIN} component={LoginScreen} />
+      <Onboarding.Screen name={ROUTES.DONOR_PHONE_LOGIN} component={DonorPhoneLoginScreen} />
+      <Onboarding.Screen name={ROUTES.OTP_VERIFICATION} component={OTPVerificationScreen} />
+      <Onboarding.Screen name={ROUTES.CREATE_ACCOUNT} component={CreateAccountScreen} />
+      <Onboarding.Screen name={ROUTES.REQUESTER_SIGNUP} component={RequesterSignupScreen} />
+      <Onboarding.Screen name={ROUTES.DONOR_REGISTRATION} component={DonorRegistrationScreen} />
+      <Onboarding.Screen name={ROUTES.COORDINATOR_SIGNUP} component={CoordinatorSignupScreen} />
+      <Onboarding.Screen name={ROUTES.NGO_SIGNUP} component={NgoSignupScreen} />
     </Onboarding.Navigator>
   );
 }
 
-function RequesterStack() {
+function AuthenticatedStack({ role }) {
   return (
-    <Requester.Navigator screenOptions={stackOpts}>
-      <Requester.Screen name="RequesterHome" component={RequesterHome} />
-    </Requester.Navigator>
+    <Authenticated.Navigator key={role} screenOptions={{ headerShown: false }}>
+      <Authenticated.Screen
+        name={roleHomeRoutes[role]}
+        component={RoleHomePendingScreen}
+        initialParams={{ role }}
+      />
+    </Authenticated.Navigator>
   );
 }
 
 export default function RootNavigator() {
-  const { token, booting } = useAuth();
+  const { token, user, booting } = useAuth();
   if (booting) return <SplashScreen />;
+  const role = normalizeRole(user?.role) ?? ROLES.REQUESTER;
   return (
     <NavigationContainer>
-      {token ? <RequesterStack /> : <OnboardingStack />}
+      {token ? (
+        role === ROLES.REQUESTER ? <RequesterNavigator /> :
+          role === ROLES.DONOR ? <DonorNavigator /> : <AuthenticatedStack role={role} />
+      ) : <OnboardingStack />}
     </NavigationContainer>
   );
 }

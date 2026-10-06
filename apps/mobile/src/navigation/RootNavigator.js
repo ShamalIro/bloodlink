@@ -17,6 +17,8 @@ import NgoSignupScreen from '../screens/onboarding/NgoSignupScreen';
 import RoleHomePendingScreen from '../screens/shared/RoleHomePendingScreen';
 import RequesterNavigator from './RequesterNavigator';
 import DonorNavigator from './DonorNavigator';
+import CoordinatorNavigator from './CoordinatorNavigator';
+import NgoNavigator from './NgoNavigator';
 
 const Onboarding = createNativeStackNavigator();
 const Authenticated = createNativeStackNavigator();
@@ -65,7 +67,9 @@ export default function RootNavigator() {
     <NavigationContainer>
       {token ? (
         role === ROLES.REQUESTER ? <RequesterNavigator /> :
-          role === ROLES.DONOR ? <DonorNavigator /> : <AuthenticatedStack role={role} />
+          role === ROLES.DONOR ? <DonorNavigator /> :
+            role === ROLES.COORDINATOR ? <CoordinatorNavigator /> :
+              role === ROLES.NGO ? <NgoNavigator /> : <AuthenticatedStack role={role} />
       ) : <OnboardingStack />}
     </NavigationContainer>
   );

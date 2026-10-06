@@ -1,0 +1,5 @@
+// Usage: router.get('/pending', requireRole('coordinator'), handler)
+module.exports = (...roles) => (req, res, next) =>
+  roles.includes(req.user?.role)
+    ? next()
+    : res.status(403).json({ message: `Requires role: ${roles.join(' or ')}` });

@@ -1,6 +1,16 @@
 const mongoose = require('mongoose');
 const Request = require('../models/Request');
 
+const ACTIVE = ['pending', 'broadcasting'];
+const PAST = ['fulfilled', 'closed'];
+
+// TEMPORARY, dev only: skips coordinator verification so requests broadcast at creation.
+// Must be OFF (unset) in any real deployment.
+const DEV_AUTO_VERIFY = process.env.DEV_AUTO_VERIFY === 'true';
+if (DEV_AUTO_VERIFY) {
+  console.warn('WARNING: DEV_AUTO_VERIFY is ON - coordinator verification is bypassed.');
+}
+
 const fail = (res, err) => {
   if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
   console.error('request-service error:', err);
@@ -18,7 +28,7 @@ async function loadRequest(req, res) {
   return doc;
 }
 
-// POST /api/requests
+// POST /api/requests  -> created as 'pending' until a coordinator verifies it
 exports.create = async (req, res) => {
   try {
     const { bloodType, unitsRequired, hospital, notes } = req.body;
@@ -27,29 +37,39 @@ exports.create = async (req, res) => {
         .status(400)
         .json({ message: 'bloodType, unitsRequired and hospital.name are required' });
     }
-    const doc = await Request.create({
-      requester: req.user.id,
-      bloodType,
-      unitsRequired,
-      hospital,
-      notes,
-    });
+    const doc = new Request({ requesterId: req.user.id, bloodType, unitsRequired, hospital, notes });
+    if (DEV_AUTO_VERIFY) {
+      doc.isVerified = true;
+      doc.status = 'broadcasting';
+      doc.verifiedAt = new Date();
+      // TODO(notification-service): trigger donor matching here while the bypass is on
+    }
+    await doc.save();
     res.status(201).json(doc);
   } catch (err) {
     fail(res, err);
   }
 };
 
-// GET /api/requests/my?status=active|past   (default: active)
+// GET /api/requests/mine?status=active|past   (default: active)
 exports.listMine = async (req, res) => {
   try {
     const past = req.query.status === 'past';
-    const filter = {
-      requester: req.user.id,
-      status: past ? { $ne: 'active' } : 'active',
-    };
-    const items = await Request.find(filter).sort({ createdAt: -1 });
+    const items = await Request.find({
+      requesterId: req.user.id,
+      status: { $in: past ? PAST : ACTIVE },
+    }).sort({ createdAt: -1 });
     res.json(items);
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// GET /api/requests/pending   (coordinators: requests waiting for verification)
+// TODO: filter by the coordinator's hospital once verification-service exists
+exports.listPending = async (req, res) => {
+  try {
+    res.json(await Request.find({ status: 'pending' }).sort({ createdAt: -1 }));
   } catch (err) {
     fail(res, err);
   }
@@ -65,25 +85,51 @@ exports.getById = async (req, res) => {
   }
 };
 
-// POST /api/requests/:id/respond   body: { action: 'accept' | 'decline' }  (donors only)
+// PATCH /api/requests/:id/verify   (coordinators only) -> pending -> broadcasting
+// TODO: also require the coordinator account itself to be verified (step 3)
+exports.verify = async (req, res) => {
+  try {
+    const doc = await loadRequest(req, res);
+    if (!doc) return;
+    if (doc.status !== 'pending') {
+      return res.status(409).json({ message: 'Only pending requests can be verified' });
+    }
+    doc.isVerified = true;
+    doc.status = 'broadcasting';
+    doc.verifiedBy = req.user.id;
+    doc.verifiedAt = new Date();
+    await doc.save();
+    // TODO(notification-service): trigger donor matching and push alerts here
+    res.json(doc);
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// PATCH /api/requests/:id/respond
+// body: { action: 'accept' | 'decline', distanceKm?, etaMinutes? }   (donors only)
 exports.respond = async (req, res) => {
   try {
-    if (req.user.role !== 'donor') {
-      return res.status(403).json({ message: 'Only donors can respond to requests' });
-    }
-    const { action } = req.body;
+    const { action, distanceKm, etaMinutes } = req.body;
     if (!['accept', 'decline'].includes(action)) {
       return res.status(400).json({ message: "action must be 'accept' or 'decline'" });
     }
     const doc = await loadRequest(req, res);
     if (!doc) return;
-    if (doc.status !== 'active') {
-      return res.status(409).json({ message: 'This request is no longer active' });
+    if (doc.status !== 'broadcasting') {
+      return res.status(409).json({ message: 'This request is not open for responses' });
     }
-    doc.responses = doc.responses.filter((r) => String(r.donorId) !== req.user.id);
-    doc.responses.push({
+    const existing = doc.donorResponses.find((r) => String(r.donorId) === req.user.id);
+    if (existing && ['arrived', 'donated'].includes(existing.status)) {
+      return res.status(409).json({ message: 'You have already checked in for this request' });
+    }
+    doc.donorResponses = doc.donorResponses.filter((r) => String(r.donorId) !== req.user.id);
+    doc.donorResponses.push({
       donorId: req.user.id,
-      status: action === 'accept' ? 'accepted' : 'declined',
+      status: action === 'accept' ? 'responding' : 'declined',
+      // TODO: compute distance/ETA server-side from donor and hospital locations
+      distanceKm: Number.isFinite(distanceKm) ? distanceKm : undefined,
+      etaMinutes: Number.isFinite(etaMinutes) ? etaMinutes : undefined,
     });
     await doc.save();
     res.json(doc);
@@ -92,23 +138,29 @@ exports.respond = async (req, res) => {
   }
 };
 
-// PATCH /api/requests/:id/fulfill   body (optional): { unitsFulfilled }  (owner only)
-exports.fulfill = async (req, res) => {
+// Shared by fulfill and close (owner only, request must still be open)
+const closeAs = (status) => async (req, res) => {
   try {
     const doc = await loadRequest(req, res);
     if (!doc) return;
-    if (String(doc.requester) !== req.user.id) {
+    if (String(doc.requesterId) !== req.user.id) {
       return res.status(403).json({ message: 'Only the requester can close this request' });
     }
-    if (doc.status !== 'active') {
+    if (!ACTIVE.includes(doc.status)) {
       return res.status(409).json({ message: 'This request is already closed' });
     }
-    doc.status = 'fulfilled';
+    doc.status = status;
     doc.closedAt = new Date();
-    doc.unitsFulfilled = req.body.unitsFulfilled ?? doc.unitsRequired;
+    if (status === 'fulfilled') {
+      doc.unitsFulfilled = req.body?.unitsFulfilled ?? doc.unitsRequired;
+    }
     await doc.save();
+    // TODO(notification-service): tell every donor in donorResponses the request is closed
     res.json(doc);
   } catch (err) {
     fail(res, err);
   }
 };
+
+exports.fulfill = closeAs('fulfilled'); // PATCH /api/requests/:id/fulfill
+exports.close = closeAs('closed'); // PATCH /api/requests/:id/close (cancel)

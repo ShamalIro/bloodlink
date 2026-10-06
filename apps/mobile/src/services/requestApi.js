@@ -6,7 +6,7 @@ export const createRequest = async (payload) =>
 
 // status: 'active' (default) or 'past'
 export const getMyRequests = async (status = 'active') =>
-  (await api.get('/api/requests/my', { params: { status } })).data;
+  (await api.get('/api/requests/mine', { params: { status } })).data;
 
 export const getRequest = async (id) =>
   (await api.get(`/api/requests/${id}`)).data;

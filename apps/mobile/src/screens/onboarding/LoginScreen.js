@@ -1,145 +1,91 @@
-import React, { useState } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
-} from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { colors, spacing, radius } from '../../theme';
+import React, { useRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { BrandMark, FormInput, InfoBanner, PasswordInput, PrimaryButton, Screen } from '../../components';
+import { normalizeRole, ROLES, ROUTES } from '../../constants';
+import { colors, spacing, typography } from '../../theme';
 import { useAuth } from '../../store/AuthContext';
 import { login } from '../../services/authApi';
 
-export default function LoginScreen({ navigation, route }) {
-  const role = route.params?.role; // set by Role Selection later
-  const { signIn } = useAuth();
+const roleLabels = {
+  [ROLES.DONOR]: 'Blood Donor',
+  [ROLES.REQUESTER]: 'Requester',
+  [ROLES.COORDINATOR]: 'Hospital Coordinator',
+  [ROLES.NGO]: 'NGO Staff',
+};
 
+export default function LoginScreen({ navigation, route }) {
+  const role = normalizeRole(route.params?.role);
+  const { signIn } = useAuth();
+  const passwordRef = useRef(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-
+  const [notice, setNotice] = useState('');
   const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
 
   const onSubmit = async () => {
     setError('');
+    setNotice('');
     setLoading(true);
     try {
       const data = await login({ email: email.trim().toLowerCase(), password });
-      await signIn(data.token, data.user); // flips RootNavigator to the requester flow
-    } catch (e) {
-      setError(
-        e?.response?.data?.message ||
-          (e?.message === 'Network Error'
-            ? 'Cannot reach the server. Check your connection.'
-            : 'Incorrect email or password.')
-      );
+      await signIn(data.token, data.user);
+    } catch (requestError) {
+      setError(requestError?.response?.data?.message || (requestError?.message === 'Network Error'
+        ? 'Cannot reach the server. Check your connection.'
+        : 'Incorrect email or password.'));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Log in</Text>
-        <Text style={styles.subtitle}>
-          {role ? `Continue as ${role}.` : 'Welcome back to BloodLink.'}
-        </Text>
-
-        <Text style={styles.label}>Email</Text>
-        <TextInput
-          style={styles.input}
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@example.com"
-          placeholderTextColor={colors.textMuted}
-          autoCapitalize="none"
-          autoComplete="email"
-          keyboardType="email-address"
-          returnKeyType="next"
-        />
-
-        <Text style={styles.label}>Password</Text>
-        <View style={styles.pwRow}>
-          <TextInput
-            style={[styles.input, styles.pwInput]}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="Your password"
-            placeholderTextColor={colors.textMuted}
-            secureTextEntry={!showPw}
-            autoCapitalize="none"
-            returnKeyType="done"
-            onSubmitEditing={canSubmit ? onSubmit : undefined}
-          />
-          <TouchableOpacity
-            style={styles.eye}
-            onPress={() => setShowPw((s) => !s)}
-            accessibilityLabel={showPw ? 'Hide password' : 'Show password'}
-          >
-            <MaterialCommunityIcons
-              name={showPw ? 'eye-off-outline' : 'eye-outline'}
-              size={22}
-              color={colors.textMuted}
-            />
-          </TouchableOpacity>
+    <Screen scroll keyboardAvoiding contentContainerStyle={styles.screen}>
+      <View style={styles.content}>
+        <BrandMark />
+        <View style={styles.heading}>
+          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.subtitle}>{role ? `Continue as ${roleLabels[role]}.` : 'Sign in to request or donate blood.'}</Text>
         </View>
-
-        {!!error && <Text style={styles.error}>{error}</Text>}
-
-        <TouchableOpacity
-          style={[styles.button, !canSubmit && styles.buttonDisabled]}
-          onPress={onSubmit}
-          disabled={!canSubmit}
-        >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Log in</Text>}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.link}
-          onPress={() => navigation.navigate('CreateAccount', { role })}
-        >
-          <Text style={styles.linkText}>
-            New here? <Text style={styles.linkStrong}>Create an account</Text>
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        {role ? (
+          <View style={styles.roleRow}>
+            <Text style={styles.roleText}>Signing in as <Text style={styles.roleStrong}>{roleLabels[role]}</Text></Text>
+            <Pressable onPress={() => navigation.navigate(ROUTES.ROLE_SELECTION)} hitSlop={8}><Text style={styles.change}>Change</Text></Pressable>
+          </View>
+        ) : null}
+        <View style={styles.form}>
+          <FormInput label="Email" value={email} onChangeText={setEmail} placeholder="you@example.com" keyboardType="email-address" autoCapitalize="none" autoComplete="email" returnKeyType="next" leftIcon="email-outline" onSubmitEditing={() => passwordRef.current?.focus()} />
+          <PasswordInput ref={passwordRef} label="Password" value={password} onChangeText={setPassword} placeholder="Enter your password" returnKeyType="done" onSubmitEditing={canSubmit ? onSubmit : undefined} />
+        </View>
+        <Pressable onPress={() => setNotice('Password recovery is not available in the current backend yet.')} style={styles.forgot} hitSlop={8}><Text style={styles.forgotText}>Forgot password?</Text></Pressable>
+        {notice ? <InfoBanner message={notice} style={styles.feedback} /> : null}
+        {error ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
+        <PrimaryButton title="Sign in" onPress={onSubmit} disabled={!canSubmit} loading={loading} />
+        <Pressable onPress={() => navigation.navigate(ROUTES.CREATE_ACCOUNT, { role })} style={styles.createLink}>
+          <Text style={styles.createText}>Don’t have an account? <Text style={styles.createStrong}>Create one</Text></Text>
+        </Pressable>
+      </View>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, backgroundColor: colors.bg },
-  container: { flexGrow: 1, padding: spacing.lg, justifyContent: 'center' },
-  title: { fontSize: 30, fontWeight: '800', color: colors.text },
-  subtitle: { fontSize: 15, color: colors.textMuted, marginTop: spacing.xs, marginBottom: spacing.lg },
-  label: { fontSize: 13, fontWeight: '600', color: colors.text, marginBottom: spacing.xs, marginTop: spacing.md },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: colors.text,
-  },
-  pwRow: { justifyContent: 'center' },
-  pwInput: { paddingRight: 48 },
-  eye: { position: 'absolute', right: spacing.md },
-  error: { color: colors.error, marginTop: spacing.md, fontSize: 14 },
-  button: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: spacing.lg,
-  },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  link: { alignItems: 'center', marginTop: spacing.lg },
-  linkText: { color: colors.textMuted, fontSize: 14 },
-  linkStrong: { color: colors.primary, fontWeight: '700' },
+  screen: { justifyContent: 'center', paddingVertical: spacing.xxxl },
+  content: { width: '100%', maxWidth: 440, alignSelf: 'center' },
+  heading: { marginTop: spacing.xxxl, alignItems: 'center' },
+  title: { color: colors.textPrimary, fontSize: typography.sizes.title, lineHeight: typography.lineHeights.title, fontWeight: typography.weights.extrabold },
+  subtitle: { marginTop: spacing.xs, color: colors.textSecondary, fontSize: typography.sizes.body, lineHeight: typography.lineHeights.body, textAlign: 'center' },
+  roleRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.xl, paddingHorizontal: spacing.md, borderRadius: 12, backgroundColor: colors.primaryTint },
+  roleText: { color: colors.textSecondary, fontSize: typography.sizes.supporting },
+  roleStrong: { color: colors.textPrimary, fontWeight: typography.weights.bold },
+  change: { color: colors.primary, fontSize: typography.sizes.supporting, fontWeight: typography.weights.semibold },
+  form: { gap: spacing.lg, marginTop: spacing.xxl },
+  forgot: { minHeight: 44, alignSelf: 'flex-end', justifyContent: 'center' },
+  forgotText: { color: colors.primary, fontSize: typography.sizes.supporting, fontWeight: typography.weights.semibold },
+  feedback: { marginBottom: spacing.lg },
+  error: { marginBottom: spacing.lg, color: colors.error, fontSize: typography.sizes.supporting, lineHeight: typography.lineHeights.supporting },
+  createLink: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: spacing.lg },
+  createText: { color: colors.textSecondary, fontSize: typography.sizes.supporting },
+  createStrong: { color: colors.primary, fontWeight: typography.weights.bold },
 });

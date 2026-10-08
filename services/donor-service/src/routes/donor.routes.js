@@ -9,5 +9,6 @@ router.put('/me', ctrl.upsertMe);
 router.get('/me', ctrl.getMe);
 router.patch('/me/availability', ctrl.setAvailability);
 router.get('/me/qr', ctrl.issueQr);
+router.get('/me/donations', ctrl.listMyDonations);
 
 module.exports = router;

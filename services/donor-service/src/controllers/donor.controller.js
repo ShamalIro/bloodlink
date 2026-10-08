@@ -1,11 +1,15 @@
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const DonorProfile = require('../models/DonorProfile');
+const Donation = require('../models/Donation');
 const { BLOOD_TYPES, compatibleDonorTypes } = require('../utils/bloodCompatibility');
 
 const QR_TTL_SECONDS = 10 * 60;
 
 const fail = (res, err) => {
-  if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
+  if (err.name === 'ValidationError' || err.name === 'CastError') {
+    return res.status(400).json({ message: err.message });
+  }
   console.error('donor-service error:', err);
   return res.status(500).json({ message: 'Server error' });
 };
@@ -141,6 +145,92 @@ exports.match = async (req, res) => {
     ]);
     res.json(donors);
   } catch (err) {
+    fail(res, err);
+  }
+};
+
+// GET /api/donors/me/donations  (Donation History screen)
+exports.listMyDonations = async (req, res) => {
+  try {
+    const profile = await DonorProfile.findOne({ userId: req.user.id });
+    if (!profile) return res.status(404).json({ message: 'Donor profile not set up yet' });
+    const donations = await Donation.find({ donorId: req.user.id }).sort({ donatedAt: -1 });
+    res.json({
+      count: donations.length,
+      lastDonationDate: profile.lastDonationDate,
+      eligibleFromDate: profile.eligibleFromDate,
+      isEligible: profile.isEligible,
+      donations,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// POST /internal/donors/validate-qr   body: { token }
+// Called by the check-in flow when a coordinator scans a donor's QR code.
+exports.validateQr = async (req, res) => {
+  try {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ valid: false, message: 'token is required' });
+    if (!process.env.QR_SECRET) return res.status(500).json({ message: 'QR_SECRET not configured' });
+
+    let payload;
+    try {
+      payload = jwt.verify(token, process.env.QR_SECRET);
+    } catch (e) {
+      return res.status(401).json({ valid: false, message: 'QR code is invalid or has expired' });
+    }
+    if (payload.purpose !== 'checkin') {
+      return res.status(401).json({ valid: false, message: 'QR code is invalid or has expired' });
+    }
+
+    const profile = await DonorProfile.findOne({ userId: payload.donorId });
+    if (!profile) return res.status(404).json({ valid: false, message: 'Donor profile not found' });
+
+    res.json({
+      valid: true,
+      donorId: payload.donorId,
+      bloodType: profile.bloodType,
+      district: profile.district,
+      isEligible: profile.isEligible,
+    });
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// POST /internal/donors/:donorId/donations
+// body: { requestId, hospitalName?, units?, confirmedBy? }
+// Called when a coordinator confirms collection. Starts the 120-day cooldown.
+exports.recordDonation = async (req, res) => {
+  try {
+    const { donorId } = req.params;
+    const { requestId, hospitalName, units, confirmedBy } = req.body;
+    if (!mongoose.isValidObjectId(donorId) || !mongoose.isValidObjectId(requestId)) {
+      return res.status(400).json({ message: 'Valid donorId and requestId are required' });
+    }
+    const profile = await DonorProfile.findOne({ userId: donorId });
+    if (!profile) return res.status(404).json({ message: 'Donor profile not found' });
+
+    const donation = await Donation.create({
+      donorId,
+      requestId,
+      hospitalName,
+      bloodType: profile.bloodType,
+      units,
+      confirmedBy,
+    });
+
+    profile.lastDonationDate = donation.donatedAt;
+    profile.recalcEligibility();
+    await profile.save();
+
+    res.status(201).json({ donation, eligibleFromDate: profile.eligibleFromDate });
+  } catch (err) {
+    if (err.code === 11000) {
+      return res.status(409).json({ message: 'This donation was already recorded' });
+    }
     fail(res, err);
   }
 };

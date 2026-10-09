@@ -9,8 +9,7 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ service: 'inventory-service', status: 'ok' }));
 
-// Mount routes here once you add them, e.g.:
-// app.use('/api', require('./routes'));
+app.use('/api/inventory', require('./routes/inventory.routes'));
 
 const PORT = process.env.PORT || 4007;
 

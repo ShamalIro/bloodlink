@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Request = require('../models/Request');
 const { notifyBroadcast, notifyClosed } = require('../utils/notificationClient');
 const { validateQr, recordDonation } = require('../utils/donorClient');
+const { getHospital } = require('../utils/verificationClient');
 
 const ACTIVE = ['pending', 'broadcasting'];
 const PAST = ['fulfilled', 'closed'];
@@ -48,6 +49,14 @@ exports.create = async (req, res) => {
       return res.status(400).json({
         message: 'hospital.hospitalId is required (choose a hospital from /api/verification/hospitals)',
       });
+    }
+    // Attach the hospital's coordinates (needed to find nearby donors) and reject unknown hospitals.
+    if (hospital.hospitalId) {
+      const h = await getHospital(hospital.hospitalId);
+      if (!h && !DEV_AUTO_VERIFY) {
+        return res.status(400).json({ message: 'Unknown hospital - choose one from /api/verification/hospitals' });
+      }
+      if (h?.location?.coordinates && !hospital.location) hospital.location = h.location;
     }
     const doc = new Request({ requesterId: req.user.id, bloodType, unitsRequired, hospital, notes });
     if (DEV_AUTO_VERIFY) {
@@ -277,6 +286,48 @@ exports.confirmDonation = async (req, res) => {
     await doc.save();
     if (doc.status === 'fulfilled') notifyClosed(doc); // tells donors still on their way to stop
     res.json(doc);
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// "Critical" (assumption, easy to change): broadcasting for over 15 minutes with no donor
+// responding, arrived or donated yet.
+const CRITICAL_AFTER_MIN = Number(process.env.CRITICAL_AFTER_MINUTES) || 15;
+
+// GET /api/requests/dashboard   (approved coordinator) -> counts for their own hospital
+exports.dashboard = async (req, res) => {
+  try {
+    const criticalBefore = new Date(Date.now() - CRITICAL_AFTER_MIN * 60 * 1000);
+    const [r] = await Request.aggregate([
+      { $match: { 'hospital.hospitalId': req.user.hospitalId } },
+      {
+        $facet: {
+          pending: [{ $match: { status: 'pending' } }, { $count: 'n' }],
+          broadcasted: [{ $match: { status: 'broadcasting' } }, { $count: 'n' }],
+          fulfilled: [{ $match: { status: 'fulfilled' } }, { $count: 'n' }],
+          critical: [
+            {
+              $match: {
+                status: 'broadcasting',
+                verifiedAt: { $lte: criticalBefore },
+                donorResponses: {
+                  $not: { $elemMatch: { status: { $in: ['responding', 'arrived', 'donated'] } } },
+                },
+              },
+            },
+            { $count: 'n' },
+          ],
+        },
+      },
+    ]);
+    const n = (k) => r[k][0]?.n ?? 0;
+    res.json({
+      pending: n('pending'),
+      broadcasted: n('broadcasted'),
+      fulfilled: n('fulfilled'),
+      critical: n('critical'),
+    });
   } catch (err) {
     fail(res, err);
   }

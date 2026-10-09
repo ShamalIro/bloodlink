@@ -103,7 +103,7 @@ exports.issueQr = async (req, res) => {
   }
 };
 
-// GET /internal/donors/match?bloodType=O%2B&lat=6.93&lng=79.86&radiusKm=15
+// GET /internal/donors/match?bloodType=O%2B&lat=6.93&lng=79.86&radiusKm=15[&exact=true]
 // Internal only (notification-service). Returns eligible, available, nearby, compatible donors.
 exports.match = async (req, res) => {
   try {
@@ -124,7 +124,8 @@ exports.match = async (req, res) => {
           spherical: true,
           query: {
             available: true,
-            bloodType: { $in: compatibleDonorTypes(bloodType) },
+            // exact=true: only this blood type (stock appeals); otherwise all compatible donors
+            bloodType: { $in: req.query.exact === 'true' ? [bloodType] : compatibleDonorTypes(bloodType) },
             $or: [
               { eligibleFromDate: { $exists: false } },
               { eligibleFromDate: null },
@@ -231,6 +232,21 @@ exports.recordDonation = async (req, res) => {
     if (err.code === 11000) {
       return res.status(409).json({ message: 'This donation was already recorded' });
     }
+    fail(res, err);
+  }
+};
+
+// POST /internal/donors/push-tokens   body: { userIds: [...] }
+// Used by notification-service to reach donors who already responded to a request.
+exports.pushTokens = async (req, res) => {
+  try {
+    const { userIds } = req.body;
+    if (!Array.isArray(userIds) || userIds.length === 0 || userIds.length > 500) {
+      return res.status(400).json({ message: 'userIds must be an array of 1 to 500 ids' });
+    }
+    const profiles = await DonorProfile.find({ userId: { $in: userIds } }).select('userId pushToken -_id');
+    res.json(profiles);
+  } catch (err) {
     fail(res, err);
   }
 };

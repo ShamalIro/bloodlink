@@ -37,6 +37,12 @@ exports.create = async (req, res) => {
         .status(400)
         .json({ message: 'bloodType, unitsRequired and hospital.name are required' });
     }
+    // The hospitalId routes the request to that hospital's coordinators.
+    if (!DEV_AUTO_VERIFY && !hospital.hospitalId) {
+      return res.status(400).json({
+        message: 'hospital.hospitalId is required (choose a hospital from /api/verification/hospitals)',
+      });
+    }
     const doc = new Request({ requesterId: req.user.id, bloodType, unitsRequired, hospital, notes });
     if (DEV_AUTO_VERIFY) {
       doc.isVerified = true;
@@ -65,11 +71,14 @@ exports.listMine = async (req, res) => {
   }
 };
 
-// GET /api/requests/pending   (coordinators: requests waiting for verification)
-// TODO: filter by the coordinator's hospital once verification-service exists
+// GET /api/requests/pending   (approved coordinators: their hospital's requests awaiting verification)
 exports.listPending = async (req, res) => {
   try {
-    res.json(await Request.find({ status: 'pending' }).sort({ createdAt: -1 }));
+    res.json(
+      await Request.find({ status: 'pending', 'hospital.hospitalId': req.user.hospitalId }).sort({
+        createdAt: -1,
+      })
+    );
   } catch (err) {
     fail(res, err);
   }
@@ -85,12 +94,14 @@ exports.getById = async (req, res) => {
   }
 };
 
-// PATCH /api/requests/:id/verify   (coordinators only) -> pending -> broadcasting
-// TODO: also require the coordinator account itself to be verified (step 3)
+// PATCH /api/requests/:id/verify   (approved coordinators only) -> pending -> broadcasting
 exports.verify = async (req, res) => {
   try {
     const doc = await loadRequest(req, res);
     if (!doc) return;
+    if (doc.hospital?.hospitalId !== req.user.hospitalId) {
+      return res.status(403).json({ message: 'This request belongs to another hospital' });
+    }
     if (doc.status !== 'pending') {
       return res.status(409).json({ message: 'Only pending requests can be verified' });
     }

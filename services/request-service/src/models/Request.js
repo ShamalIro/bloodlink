@@ -14,6 +14,9 @@ const donorResponseSchema = new mongoose.Schema(
     distanceKm: Number,
     etaMinutes: Number,
     respondedAt: { type: Date, default: Date.now },
+    arrivedAt: Date,
+    donatedAt: Date,
+    unitsDonated: Number,
   },
   { _id: false }
 );

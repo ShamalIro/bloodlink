@@ -18,7 +18,7 @@ app.use(proxy('/api/auth', process.env.AUTH_SERVICE_URL));
 app.use(proxy('/api/requests', process.env.REQUEST_SERVICE_URL));
 app.use(proxy('/api/donors', process.env.DONOR_SERVICE_URL));
 app.use(proxy('/api/verification', process.env.VERIFICATION_SERVICE_URL));
-// app.use(proxy('/api/notifications', process.env.NOTIFICATION_SERVICE_URL));
+app.use(proxy('/api/notifications', process.env.NOTIFICATION_SERVICE_URL));
 // app.use(proxy('/api/camps', process.env.CAMP_SERVICE_URL));
 // app.use(proxy('/api/inventory', process.env.INVENTORY_SERVICE_URL));
 

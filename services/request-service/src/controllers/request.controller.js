@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
 const Request = require('../models/Request');
+const { notifyBroadcast, notifyClosed } = require('../utils/notificationClient');
+const { validateQr, recordDonation } = require('../utils/donorClient');
 
 const ACTIVE = ['pending', 'broadcasting'];
 const PAST = ['fulfilled', 'closed'];
@@ -12,6 +14,10 @@ if (DEV_AUTO_VERIFY) {
 }
 
 const fail = (res, err) => {
+  if (err.code === 'UPSTREAM') {
+    console.error('request-service upstream error:', err.message);
+    return res.status(503).json({ message: 'A dependent service is unavailable, try again' });
+  }
   if (err.name === 'ValidationError') return res.status(400).json({ message: err.message });
   console.error('request-service error:', err);
   return res.status(500).json({ message: 'Server error' });
@@ -48,9 +54,9 @@ exports.create = async (req, res) => {
       doc.isVerified = true;
       doc.status = 'broadcasting';
       doc.verifiedAt = new Date();
-      // TODO(notification-service): trigger donor matching here while the bypass is on
     }
     await doc.save();
+    if (doc.status === 'broadcasting') notifyBroadcast(doc); // only with the dev bypass on
     res.status(201).json(doc);
   } catch (err) {
     fail(res, err);
@@ -110,7 +116,7 @@ exports.verify = async (req, res) => {
     doc.verifiedBy = req.user.id;
     doc.verifiedAt = new Date();
     await doc.save();
-    // TODO(notification-service): trigger donor matching and push alerts here
+    notifyBroadcast(doc);
     res.json(doc);
   } catch (err) {
     fail(res, err);
@@ -166,7 +172,7 @@ const closeAs = (status) => async (req, res) => {
       doc.unitsFulfilled = req.body?.unitsFulfilled ?? doc.unitsRequired;
     }
     await doc.save();
-    // TODO(notification-service): tell every donor in donorResponses the request is closed
+    notifyClosed(doc);
     res.json(doc);
   } catch (err) {
     fail(res, err);
@@ -175,3 +181,103 @@ const closeAs = (status) => async (req, res) => {
 
 exports.fulfill = closeAs('fulfilled'); // PATCH /api/requests/:id/fulfill
 exports.close = closeAs('closed'); // PATCH /api/requests/:id/close (cancel)
+
+// Shared checks for coordinator actions on one request:
+// loads it, enforces same-hospital, and requires it to be open (broadcasting).
+async function loadForCoordinator(req, res) {
+  const doc = await loadRequest(req, res);
+  if (!doc) return null;
+  if (doc.hospital?.hospitalId !== req.user.hospitalId) {
+    res.status(403).json({ message: 'This request belongs to another hospital' });
+    return null;
+  }
+  if (doc.status !== 'broadcasting') {
+    res.status(409).json({ message: 'This request is not open' });
+    return null;
+  }
+  return doc;
+}
+
+const findResponse = (doc, donorId) =>
+  doc.donorResponses.find((r) => String(r.donorId) === String(donorId));
+
+// POST /api/requests/:id/check-in   body: { qrToken }   (approved coordinator, same hospital)
+// Donor arrived: validates their short-lived QR token and marks them 'arrived'.
+exports.checkIn = async (req, res) => {
+  try {
+    const { qrToken } = req.body;
+    if (!qrToken) return res.status(400).json({ message: 'qrToken is required' });
+
+    const doc = await loadForCoordinator(req, res);
+    if (!doc) return;
+
+    const qr = await validateQr(qrToken);
+    if (!qr.valid) {
+      return res
+        .status(400)
+        .json({ message: 'QR code is invalid or has expired - ask the donor to reopen it' });
+    }
+
+    const entry = findResponse(doc, qr.donorId);
+    if (!entry || entry.status === 'declined') {
+      return res.status(409).json({ message: 'This donor has not accepted this request' });
+    }
+    if (entry.status !== 'responding') {
+      return res.status(409).json({ message: `Donor is already marked ${entry.status}` });
+    }
+    if (!qr.isEligible) {
+      return res.status(409).json({ message: 'This donor is not eligible to donate yet' });
+    }
+
+    entry.status = 'arrived';
+    entry.arrivedAt = new Date();
+    await doc.save();
+    res.json({ request: doc, donor: { donorId: qr.donorId, bloodType: qr.bloodType } });
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
+// POST /api/requests/:id/confirm-donation   body: { donorId, units? }   (approved coordinator)
+// Collection done: records the donation (starts the donor's 120-day cooldown),
+// adds to unitsFulfilled, and closes the request when enough units are in.
+exports.confirmDonation = async (req, res) => {
+  try {
+    const { donorId } = req.body;
+    const units = req.body.units === undefined ? 1 : req.body.units;
+    if (!mongoose.isValidObjectId(donorId) || !Number.isInteger(units) || units < 1 || units > 4) {
+      return res.status(400).json({ message: 'A valid donorId and units (1-4) are required' });
+    }
+
+    const doc = await loadForCoordinator(req, res);
+    if (!doc) return;
+
+    const entry = findResponse(doc, donorId);
+    if (!entry) return res.status(409).json({ message: 'This donor has not responded to this request' });
+    if (entry.status === 'donated') return res.status(409).json({ message: 'Donation already confirmed' });
+    if (entry.status !== 'arrived') {
+      return res.status(409).json({ message: 'The donor must check in (scan QR) first' });
+    }
+
+    await recordDonation(donorId, {
+      requestId: String(doc._id),
+      hospitalName: doc.hospital.name,
+      units,
+      confirmedBy: req.user.id,
+    });
+
+    entry.status = 'donated';
+    entry.donatedAt = new Date();
+    entry.unitsDonated = units;
+    doc.unitsFulfilled += units;
+    if (doc.unitsFulfilled >= doc.unitsRequired) {
+      doc.status = 'fulfilled';
+      doc.closedAt = new Date();
+    }
+    await doc.save();
+    if (doc.status === 'fulfilled') notifyClosed(doc); // tells donors still on their way to stop
+    res.json(doc);
+  } catch (err) {
+    fail(res, err);
+  }
+};

@@ -92,6 +92,7 @@ services:
       PORT: 4007
       MONGO_URI: mongodb://mongo:27017/bloodlink_inventory
       VERIFICATION_SERVICE_URL: http://verification-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
     ports:
       - "4007:4007"
 

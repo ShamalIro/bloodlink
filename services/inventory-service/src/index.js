@@ -9,7 +9,7 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ service: 'inventory-service', status: 'ok' }));
 
-app.use('/api/inventory', require('./routes/inventory.routes'));
+app.use('/api/inventory', require('./routes/Inventory.routes'));
 
 const PORT = process.env.PORT || 4007;
 

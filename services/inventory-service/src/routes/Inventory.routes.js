@@ -2,8 +2,8 @@ const router = require('express').Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
 const requireApprovedOrg = require('../middleware/requireApprovedOrg');
-const ownHospital = require('../middleware/ownHospital');
-const ctrl = require('../controllers/inventory.controller');
+const ownHospital = require('../middleware/requireOwnHospital');
+const ctrl = require('../controllers/Inventory.controller');
 
 // Approved hospital coordinators only, and only for their own hospital.
 router.use(auth, requireRole('coordinator'), requireApprovedOrg);

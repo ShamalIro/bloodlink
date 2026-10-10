@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const auth = require('../middleware/auth');
 const requireRole = require('../middleware/requireRole');
-const requireApprovedNgo = require('../middleware/requireApprovedNgo');
+const requireApprovedNgo = require('../middleware/requireApprovedNGO');
 const ctrl = require('../controllers/camp.controller');
 
 router.use(auth);

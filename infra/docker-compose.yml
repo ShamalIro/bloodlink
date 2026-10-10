@@ -1,4 +1,8 @@
-version: "3.9"
+x-service: &service
+  restart: on-failure
+  depends_on:
+    mongo:
+      condition: service_healthy
 
 services:
   mongo:
@@ -7,70 +11,113 @@ services:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   auth-service:
+    <<: *service
     build: ../services/auth-service
     env_file: ../services/auth-service/.env
+    environment:
+      PORT: 4001
+      MONGO_URI: mongodb://mongo:27017/bloodlink_auth
     ports:
       - "4001:4001"
-    depends_on:
-      - mongo
 
   donor-service:
+    <<: *service
     build: ../services/donor-service
     env_file: ../services/donor-service/.env
+    environment:
+      PORT: 4002
+      MONGO_URI: mongodb://mongo:27017/bloodlink_donors
     ports:
       - "4002:4002"
-    depends_on:
-      - mongo
 
   request-service:
+    <<: *service
     build: ../services/request-service
     env_file: ../services/request-service/.env
+    environment:
+      PORT: 4003
+      MONGO_URI: mongodb://mongo:27017/bloodlink_requests
+      DEV_AUTO_VERIFY: "false"
+      VERIFICATION_SERVICE_URL: http://verification-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      DONOR_SERVICE_URL: http://donor-service:4002
     ports:
       - "4003:4003"
-    depends_on:
-      - mongo
 
   verification-service:
+    <<: *service
     build: ../services/verification-service
     env_file: ../services/verification-service/.env
+    environment:
+      PORT: 4004
+      MONGO_URI: mongodb://mongo:27017/bloodlink_verification
     ports:
       - "4004:4004"
-    depends_on:
-      - mongo
 
   notification-service:
+    <<: *service
     build: ../services/notification-service
     env_file: ../services/notification-service/.env
+    environment:
+      PORT: 4005
+      MONGO_URI: mongodb://mongo:27017/bloodlink_notifications
+      DONOR_SERVICE_URL: http://donor-service:4002
     ports:
       - "4005:4005"
-    depends_on:
-      - mongo
 
   camp-service:
+    <<: *service
     build: ../services/camp-service
     env_file: ../services/camp-service/.env
+    environment:
+      PORT: 4006
+      MONGO_URI: mongodb://mongo:27017/bloodlink_camps
+      VERIFICATION_SERVICE_URL: http://verification-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
     ports:
       - "4006:4006"
-    depends_on:
-      - mongo
 
   inventory-service:
+    <<: *service
     build: ../services/inventory-service
     env_file: ../services/inventory-service/.env
+    environment:
+      PORT: 4007
+      MONGO_URI: mongodb://mongo:27017/bloodlink_inventory
+      VERIFICATION_SERVICE_URL: http://verification-service:4004
     ports:
       - "4007:4007"
-    depends_on:
-      - mongo
 
   gateway:
+    restart: on-failure
     build: ../gateway
     env_file: ../gateway/.env
+    environment:
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DONOR_SERVICE_URL: http://donor-service:4002
+      REQUEST_SERVICE_URL: http://request-service:4003
+      VERIFICATION_SERVICE_URL: http://verification-service:4004
+      NOTIFICATION_SERVICE_URL: http://notification-service:4005
+      CAMP_SERVICE_URL: http://camp-service:4006
+      INVENTORY_SERVICE_URL: http://inventory-service:4007
     ports:
       - "4000:4000"
     depends_on:
       - auth-service
+      - donor-service
+      - request-service
+      - verification-service
+      - notification-service
+      - camp-service
+      - inventory-service
 
 volumes:
   mongo_data:

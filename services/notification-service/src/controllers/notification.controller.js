@@ -392,9 +392,9 @@ exports.sendCampInvitations = async (req, res) => {
       campId,
       title,
       district,
-      venue,
-      startDate,
-      targetBloodTypes,
+      venueName: venue,
+      startsAt: startDate,
+      bloodTypesNeeded: targetBloodTypes,
       location,
     } = req.body;
 
@@ -410,7 +410,6 @@ exports.sendCampInvitations = async (req, res) => {
     if (
       !mongoose.isValidObjectId(campId) ||
       !title ||
-      !district ||
       !venue ||
       !Number.isFinite(Date.parse(startDate)) ||
       !Array.isArray(targetBloodTypes) ||
@@ -459,7 +458,7 @@ exports.sendCampInvitations = async (req, res) => {
     const notificationTitle = `Blood donation camp: ${title}`;
 
     const notificationBody =
-      `${venue}, ${district}. ` +
+      `${venue}${district ? `, ${district}` : ''}. ` +
       `Join us on ${new Date(startDate).toLocaleDateString('en-LK')}.`;
 
     let created = 0;

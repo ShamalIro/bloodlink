@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TOKEN_KEY, USER_KEY } from '../services/api';
+import { TOKEN_KEY, USER_KEY, setUnauthorizedHandler } from '../services/api';
 
 const AuthContext = createContext(null);
 
@@ -26,6 +26,15 @@ export function AuthProvider({ children }) {
     return () => {
       mounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(async () => {
+      await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+      setToken(null);
+      setUser(null);
+    });
+    return () => setUnauthorizedHandler(null);
   }, []);
 
   const value = useMemo(

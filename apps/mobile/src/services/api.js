@@ -18,4 +18,18 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+let onUnauthorized = null;
+export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const url = error?.config?.url ?? '';
+    // Skip /api/auth/*: a wrong password on login is also a 401
+    if (status === 401 && !url.includes('/api/auth/') && onUnauthorized) onUnauthorized();
+    return Promise.reject(error);
+  }
+);
+
 export default api;

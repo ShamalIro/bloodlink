@@ -5,12 +5,22 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Card, EmergencyBanner, ErrorState, LoadingState, PrimaryButton, Screen, SectionHeader } from '../../components';
 import { RequestCard } from '../../components/requester';
 import { ROUTES } from '../../constants';
-import { requesterPresentation } from '../../mocks/requesterPresentation';
+import useNearestHospital from '../../hooks/useNearestHospital';
 import { getMyRequests } from '../../services/requestApi';
 import { colors, radius, spacing, typography } from '../../theme';
 
+const hospitalMessage = ({ loading, hospital, distanceKm, reason }) => {
+  if (loading) return 'Finding the nearest verified hospital...';
+  if (hospital) return `${hospital.name} \u00B7 ${distanceKm.toFixed(1)} km away`;
+  if (reason === 'permission') return 'Allow location access to see the nearest verified hospital.';
+  if (reason === 'no-hospitals') return 'No verified hospitals are available yet.';
+  return 'Could not load the nearest hospital.';
+};
+
 export default function RequesterHomeScreen({ navigation }) {
   const [state, setState] = useState({ loading: true, error: '', request: null });
+  const nearest = useNearestHospital();
+  const reloadNearest = nearest.reload;
 
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: '' }));
@@ -22,7 +32,7 @@ export default function RequesterHomeScreen({ navigation }) {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); reloadNearest(); }, [load, reloadNearest]));
 
   return (
     <Screen scroll contentContainerStyle={styles.screen} safeAreaEdges={['top', 'left', 'right']}>
@@ -46,8 +56,8 @@ export default function RequesterHomeScreen({ navigation }) {
         </Card>
 
         <EmergencyBanner
-          title="Nearest saved hospital"
-          message={`${requesterPresentation.savedHospital.name} · ${requesterPresentation.savedHospital.address}`}
+          title="Nearest verified hospital"
+          message={hospitalMessage(nearest)}
         />
 
         <SectionHeader title="Active request" actionLabel="View all" onAction={() => navigation.navigate(ROUTES.REQUESTER_REQUESTS_TAB)} />
@@ -73,7 +83,7 @@ const styles = StyleSheet.create({
   content: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: spacing.xxl },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { color: colors.primary, fontSize: typography.sizes.caption, fontWeight: typography.weights.bold, letterSpacing: 0.8 },
-  title: { marginTop: spacing.xs, color: colors.textPrimary, fontSize: typography.sizes.display, lineHeight: typography.lineHeights.display, fontWeight: typography.weights.extrabold },
+  title: { marginTop: spacing.xs, color: colors.textPrimary, fontSize: typography.sizes.display, lineHeight: typography.lineHeights.display, fontWeight: typography.weights.extrabold},
   phoneIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: radius.pill, backgroundColor: colors.primaryTint },
   sosCard: { alignItems: 'center', padding: spacing.xxl },
   sosCircle: { width: 128, height: 128, alignItems: 'center', justifyContent: 'center', borderRadius: 64, backgroundColor: colors.primary },

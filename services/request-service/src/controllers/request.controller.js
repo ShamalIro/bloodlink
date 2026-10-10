@@ -175,11 +175,18 @@ const closeAs = (status) => async (req, res) => {
     if (!ACTIVE.includes(doc.status)) {
       return res.status(409).json({ message: 'This request is already closed' });
     }
+    if (status === 'fulfilled') {
+      if (doc.status !== 'broadcasting' || !doc.isVerified) {
+        return res.status(409).json({ message: 'Only a verified, active request can be fulfilled' });
+      }
+      if (doc.unitsFulfilled < doc.unitsRequired) {
+        return res.status(409).json({
+          message: `Only ${doc.unitsFulfilled} of ${doc.unitsRequired} units confirmed. Cancel the request instead if you no longer need it.`,
+        });
+      }
+    }
     doc.status = status;
     doc.closedAt = new Date();
-    if (status === 'fulfilled') {
-      doc.unitsFulfilled = req.body?.unitsFulfilled ?? doc.unitsRequired;
-    }
     await doc.save();
     notifyClosed(doc);
     res.json(doc);

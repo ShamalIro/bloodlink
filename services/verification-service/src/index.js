@@ -9,8 +9,8 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ service: 'verification-service', status: 'ok' }));
 
-// Mount routes here once you add them, e.g.:
-// app.use('/api', require('./routes'));
+app.use('/internal/verification', require('./routes/internal.routes'));
+app.use('/api/verification', require('./routes/public.routes'));
 
 const PORT = process.env.PORT || 4004;
 

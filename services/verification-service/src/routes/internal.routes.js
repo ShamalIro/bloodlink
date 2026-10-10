@@ -1,6 +1,6 @@
 const router = require('express').Router();
 const internalAuth = require('../middleware/internalAuth');
-const ctrl = require('../controllers/Verification.controller');
+const ctrl = require('../controllers/verification.controller');
 
 router.use(internalAuth);
 

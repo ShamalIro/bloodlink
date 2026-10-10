@@ -7,6 +7,6 @@ router.use(internalAuth);
 router.post('/request-broadcast', ctrl.broadcastRequest);
 router.post('/request-closed', ctrl.requestClosed);
 router.post('/stock-appeal', ctrl.stockAppeal);
-router.post('/camp-invite', ctrl.campInvite);
+router.post('/camp-invite', ctrl.sendCampInvitations);
 
 module.exports = router;

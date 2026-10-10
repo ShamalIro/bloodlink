@@ -1,3 +1,84 @@
-import React from 'react'; import { StyleSheet, Text, View } from 'react-native'; import { MaterialCommunityIcons } from '@expo/vector-icons'; import { Card, DestructiveButton, Screen, StatusBadge } from '../../components'; import { ngoProfile } from '../../mocks/ngoData'; import { useAuth } from '../../store/AuthContext'; import { colors, radius, spacing, typography } from '../../theme';
-export default function NgoProfileScreen(){const {user,signOut}=useAuth();return <Screen scroll safeAreaEdges={['top','left','right']} contentContainerStyle={s.screen}><View style={s.content}><Text style={s.title}>NGO profile</Text><Card elevated style={s.identity}><View style={s.avatar}><MaterialCommunityIcons name="account-group" size={30} color={colors.primary}/></View><View style={s.copy}><Text style={s.name}>{user?.name||ngoProfile.name}</Text><Text style={s.meta}>{ngoProfile.organization} · {ngoProfile.branch}</Text><StatusBadge label="NGO STAFF" variant="success"/></View></Card><Card>{[['Staff ID',ngoProfile.staffId],['Organization',ngoProfile.organization],['Branch',ngoProfile.branch],['Phone',user?.phone||ngoProfile.phone]].map(([a,b])=><View key={a} style={s.row}><Text style={s.label}>{a}</Text><Text style={s.value}>{b}</Text></View>)}</Card><Text style={s.note}>Profile editing will be enabled when an NGO profile API is available.</Text><DestructiveButton title="Log out" icon="logout" onPress={signOut}/></View></Screen>}
-const s=StyleSheet.create({screen:{paddingTop:spacing.xxl,paddingBottom:spacing.xxxl},content:{width:'100%',maxWidth:520,alignSelf:'center',gap:spacing.xxl},title:{color:colors.textPrimary,fontSize:typography.sizes.title,fontWeight:typography.weights.extrabold},identity:{flexDirection:'row',alignItems:'center',gap:spacing.md},avatar:{width:58,height:58,borderRadius:radius.pill,alignItems:'center',justifyContent:'center',backgroundColor:colors.primaryTint},copy:{flex:1,gap:spacing.xs},name:{color:colors.textPrimary,fontSize:typography.sizes.sectionTitle,fontWeight:typography.weights.bold},meta:{color:colors.textSecondary,fontSize:typography.sizes.caption},row:{flexDirection:'row',justifyContent:'space-between',gap:spacing.md,paddingVertical:spacing.md},label:{color:colors.textSecondary,fontSize:typography.sizes.supporting},value:{flex:1,color:colors.textPrimary,fontSize:typography.sizes.supporting,fontWeight:typography.weights.semibold,textAlign:'right'},note:{color:colors.textSecondary,fontSize:typography.sizes.caption,textAlign:'center'}});
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Card, DestructiveButton, Screen, StatusBadge } from '../../components';
+import { useAuth } from '../../store/AuthContext';
+import { colors, radius, spacing, typography } from '../../theme';
+import api from '../../services/api';
+
+export default function NgoProfileScreen() {
+  const { user, signOut } = useAuth();
+  const [org, setOrg] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        // A new NGO may have no application record (404); that is fine.
+        const data = (await api.get('/api/verification/me')).data;
+        if (active) setOrg(data);
+      } catch {
+        // the profile still works without the organization details
+      } finally {
+        if (active) setLoaded(true);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const orgName = org?.organizationName || (loaded ? 'Not provided' : 'Loading...');
+
+  const rows = [
+    ['Organization', orgName],
+    ['Email', user?.email || '-'],
+  ];
+  if (org?.registrationNumber) rows.push(['Registration number', org.registrationNumber]);
+  if (user?.phone) rows.push(['Phone', user.phone]);
+
+  return (
+    <Screen scroll safeAreaEdges={['top', 'left', 'right']} contentContainerStyle={s.screen}>
+      <View style={s.content}>
+        <Text style={s.title}>NGO profile</Text>
+
+        <Card elevated style={s.identity}>
+          <View style={s.avatar}>
+            <MaterialCommunityIcons name="account-group" size={30} color={colors.primary} />
+          </View>
+          <View style={s.copy}>
+            <Text style={s.name}>{user?.name || 'NGO staff'}</Text>
+            <Text style={s.meta}>{org?.organizationName || 'NGO account'}</Text>
+            <StatusBadge label="NGO STAFF" variant="success" />
+          </View>
+        </Card>
+
+        <Card>
+          {rows.map(([a, b]) => (
+            <View key={a} style={s.row}>
+              <Text style={s.label}>{a}</Text>
+              <Text style={s.value}>{b}</Text>
+            </View>
+          ))}
+        </Card>
+
+        <DestructiveButton title="Log out" icon="logout" onPress={signOut} />
+      </View>
+    </Screen>
+  );
+}
+
+const s = StyleSheet.create({
+  screen: { paddingTop: spacing.xxl, paddingBottom: spacing.xxxl },
+  content: { width: '100%', maxWidth: 520, alignSelf: 'center', gap: spacing.xxl },
+  title: { color: colors.textPrimary, fontSize: typography.sizes.title, fontWeight: typography.weights.extrabold },
+  identity: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  avatar: { width: 58, height: 58, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primaryTint },
+  copy: { flex: 1, gap: spacing.xs },
+  name: { color: colors.textPrimary, fontSize: typography.sizes.sectionTitle, fontWeight: typography.weights.bold },
+  meta: { color: colors.textSecondary, fontSize: typography.sizes.caption },
+  row: { flexDirection: 'row', justifyContent: 'space-between', gap: spacing.md, paddingVertical: spacing.md },
+  label: { color: colors.textSecondary, fontSize: typography.sizes.supporting },
+  value: { flex: 1, color: colors.textPrimary, fontSize: typography.sizes.supporting, fontWeight: typography.weights.semibold, textAlign: 'right' },
+});

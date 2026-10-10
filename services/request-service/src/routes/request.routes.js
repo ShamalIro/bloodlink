@@ -9,6 +9,7 @@ router.use(auth);
 router.post('/', ctrl.create);
 router.get('/mine', ctrl.listMine); // keep '/mine' and '/pending' above '/:id'
 router.get('/pending', requireRole('coordinator'), requireApprovedOrg, ctrl.listPending);
+router.get('/hospital', requireRole('coordinator'), requireApprovedOrg, ctrl.listForHospital);
 router.get('/dashboard', requireRole('coordinator'), requireApprovedOrg, ctrl.dashboard);
 router.get('/:id', ctrl.getById);
 router.patch('/:id/verify', requireRole('coordinator'), requireApprovedOrg, ctrl.verify);

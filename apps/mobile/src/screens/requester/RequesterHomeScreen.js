@@ -1,26 +1,17 @@
 import React, { useCallback, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { Card, EmergencyBanner, ErrorState, LoadingState, PrimaryButton, Screen, SectionHeader } from '../../components';
+import { Card, ErrorState, LoadingState, PrimaryButton, Screen, SectionHeader } from '../../components';
 import { RequestCard } from '../../components/requester';
 import { ROUTES } from '../../constants';
-import useNearestHospital from '../../hooks/useNearestHospital';
 import { getMyRequests } from '../../services/requestApi';
 import { colors, radius, spacing, typography } from '../../theme';
 
-const hospitalMessage = ({ loading, hospital, distanceKm, reason }) => {
-  if (loading) return 'Finding the nearest verified hospital...';
-  if (hospital) return `${hospital.name} \u00B7 ${distanceKm.toFixed(1)} km away`;
-  if (reason === 'permission') return 'Allow location access to see the nearest verified hospital.';
-  if (reason === 'no-hospitals') return 'No verified hospitals are available yet.';
-  return 'Could not load the nearest hospital.';
-};
+const AMBULANCE_NUMBER = '1990'; // national ambulance service
 
 export default function RequesterHomeScreen({ navigation }) {
   const [state, setState] = useState({ loading: true, error: '', request: null });
-  const nearest = useNearestHospital();
-  const reloadNearest = nearest.reload;
 
   const load = useCallback(async () => {
     setState((current) => ({ ...current, loading: true, error: '' }));
@@ -32,7 +23,15 @@ export default function RequesterHomeScreen({ navigation }) {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); reloadNearest(); }, [load, reloadNearest]));
+  useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  // Asks first so an emergency number is never dialled by accident.
+  const onCallPress = () => {
+    Alert.alert('Need urgent help?', `This will call the national ambulance service (${AMBULANCE_NUMBER}).`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: `Call ${AMBULANCE_NUMBER}`, onPress: () => Linking.openURL(`tel:${AMBULANCE_NUMBER}`).catch(() => {}) },
+    ]);
+  };
 
   return (
     <Screen scroll contentContainerStyle={styles.screen} safeAreaEdges={['top', 'left', 'right']}>
@@ -42,7 +41,9 @@ export default function RequesterHomeScreen({ navigation }) {
             <Text style={styles.eyebrow}>EMERGENCY BLOOD SUPPORT</Text>
             <Text style={styles.title}>Need blood now?</Text>
           </View>
-          <View style={styles.phoneIcon}><MaterialCommunityIcons name="phone-outline" size={24} color={colors.primary} /></View>
+          <Pressable onPress={onCallPress} style={styles.phoneIcon} accessibilityRole="button" accessibilityLabel="Call for urgent help" hitSlop={8}>
+            <MaterialCommunityIcons name="phone-outline" size={24} color={colors.primary} />
+          </Pressable>
         </View>
 
         <Card style={styles.sosCard} elevated>
@@ -54,11 +55,6 @@ export default function RequesterHomeScreen({ navigation }) {
           <Text style={styles.sosDescription}>Your hospital and request details are sent securely for verification.</Text>
           <PrimaryButton title="Start emergency request" icon="arrow-right" iconPosition="right" onPress={() => navigation.navigate(ROUTES.REQUEST_BLOOD_TYPE)} />
         </Card>
-
-        <EmergencyBanner
-          title="Nearest verified hospital"
-          message={hospitalMessage(nearest)}
-        />
 
         <SectionHeader title="Active request" actionLabel="View all" onAction={() => navigation.navigate(ROUTES.REQUESTER_REQUESTS_TAB)} />
         {state.loading ? <LoadingState compact message="Checking active requests..." /> : null}

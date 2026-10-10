@@ -11,7 +11,7 @@ router.post('/', requireRole('ngo'), requireApprovedNgo, ctrl.create);
 router.get('/mine', requireRole('ngo'), requireApprovedNgo, ctrl.listMine);
 
 // Donors. Keep '/nearby' and '/my-rsvps' above '/:id'.
-router.get('/nearby', requireRole('donor'), ctrl.nearby);
+router.get('/nearby', requireRole('donor', 'coordinator'), ctrl.nearby);
 router.get('/my-rsvps', requireRole('donor'), ctrl.myRsvps);
 
 router.get('/:id', ctrl.getById);

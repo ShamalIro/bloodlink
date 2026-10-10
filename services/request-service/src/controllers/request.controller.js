@@ -99,6 +99,25 @@ exports.listPending = async (req, res) => {
   }
 };
 
+// GET /api/requests/hospital?status=broadcasting|fulfilled
+exports.listForHospital = async (req, res) => {
+  try {
+    const { status } = req.query;
+    if (!['broadcasting', 'fulfilled'].includes(status)) {
+      return res.status(400).json({ message: "status must be 'broadcasting' or 'fulfilled'" });
+    }
+    const items = await Request.find({
+      status,
+      'hospital.hospitalId': req.user.hospitalId,
+    })
+      .sort({ updatedAt: -1 })
+      .limit(50);
+    res.json(items);
+  } catch (err) {
+    fail(res, err);
+  }
+};
+
 // GET /api/requests/:id
 exports.getById = async (req, res) => {
   try {

@@ -14,7 +14,7 @@ const choices = [
 
 export default function RoleSelectionScreen({ navigation }) {
   const selectRole = (role) => {
-    if (role === ROLES.DONOR) navigation.navigate(ROUTES.DONOR_PHONE_LOGIN, { role });
+      if (role === ROLES.DONOR) navigation.navigate(ROUTES.LOGIN, { role });
     else navigation.navigate(ROUTES.LOGIN, { role });
   };
 

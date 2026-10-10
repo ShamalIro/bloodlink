@@ -17,16 +17,19 @@ export default function LoginScreen({ navigation, route }) {
   const role = normalizeRole(route.params?.role);
   const { signIn } = useAuth();
   const passwordRef = useRef(null);
-  const [email, setEmail] = useState('');
+  // After registering, the signup screen sends the new user here with a message and their email.
+  const [email, setEmail] = useState(route.params?.email || '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [welcome, setWelcome] = useState(route.params?.notice || '');
   const canSubmit = email.trim().length > 0 && password.length > 0 && !loading;
 
   const onSubmit = async () => {
     setError('');
     setNotice('');
+    setWelcome('');
     setLoading(true);
     try {
       const data = await login({ email: email.trim().toLowerCase(), password });
@@ -48,6 +51,7 @@ export default function LoginScreen({ navigation, route }) {
           <Text style={styles.title}>Welcome back</Text>
           <Text style={styles.subtitle}>{role ? `Continue as ${roleLabels[role]}.` : 'Sign in to request or donate blood.'}</Text>
         </View>
+        {welcome ? <InfoBanner variant="success" title="Registration complete" message={welcome} style={styles.feedback} /> : null}
         {role ? (
           <View style={styles.roleRow}>
             <Text style={styles.roleText}>Signing in as <Text style={styles.roleStrong}>{roleLabels[role]}</Text></Text>
@@ -63,7 +67,7 @@ export default function LoginScreen({ navigation, route }) {
         {error ? <Text style={styles.error} accessibilityRole="alert">{error}</Text> : null}
         <PrimaryButton title="Sign in" onPress={onSubmit} disabled={!canSubmit} loading={loading} />
         <Pressable onPress={() => navigation.navigate(ROUTES.CREATE_ACCOUNT, { role })} style={styles.createLink}>
-          <Text style={styles.createText}>Don’t have an account? <Text style={styles.createStrong}>Create one</Text></Text>
+          <Text style={styles.createText}>Don't have an account? <Text style={styles.createStrong}>Create one</Text></Text>
         </Pressable>
       </View>
     </Screen>
@@ -83,7 +87,7 @@ const styles = StyleSheet.create({
   form: { gap: spacing.lg, marginTop: spacing.xxl },
   forgot: { minHeight: 44, alignSelf: 'flex-end', justifyContent: 'center' },
   forgotText: { color: colors.primary, fontSize: typography.sizes.supporting, fontWeight: typography.weights.semibold },
-  feedback: { marginBottom: spacing.lg },
+  feedback: { marginTop: spacing.xl, marginBottom: spacing.lg },
   error: { marginBottom: spacing.lg, color: colors.error, fontSize: typography.sizes.supporting, lineHeight: typography.lineHeights.supporting },
   createLink: { minHeight: 44, alignItems: 'center', justifyContent: 'center', marginTop: spacing.lg },
   createText: { color: colors.textSecondary, fontSize: typography.sizes.supporting },

@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import {
   AppHeader, BloodTypeBadge, FormInput, InfoBanner, PasswordInput,
   PhoneInput, PrimaryButton, Screen,
 } from '../../components';
 import { ROLES, ROUTES } from '../../constants';
 import { register } from '../../services/authApi';
-import { useAuth } from '../../store/AuthContext';
+import { saveMyProfile } from '../../services/donorApi';
 import { colors, radius, spacing, typography } from '../../theme';
 
 const BLOOD_TYPES = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
@@ -38,7 +39,6 @@ const initialForm = {
 
 export default function RoleRegistrationScreen({ navigation, role }) {
   const config = configurations[role];
-  const { signIn } = useAuth();
   const [form, setForm] = useState(initialForm);
   const [accepted, setAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -75,7 +75,29 @@ export default function RoleRegistrationScreen({ navigation, role }) {
         payload.staffIdOrRegNumber = form.staffId.trim();
       }
       const data = await register(payload);
-      await signIn(data.token, data.user);
+      if (role === ROLES.DONOR) {
+        const profile = { bloodType: form.bloodType, district: form.district.trim() };
+        try {
+          const permission = await Location.requestForegroundPermissionsAsync();
+          if (permission.status === 'granted') {
+            const { coords } = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            profile.latitude = coords.latitude;
+            profile.longitude = coords.longitude;
+          }
+          await saveMyProfile(profile, data.token);
+        } catch (profileError) {
+          // Account exists; the profile can be completed later from the donor screens
+        }
+      }
+
+      // Do NOT sign in here. Send the user to the Login screen instead.
+      const notice = isStaff
+        ? 'Account created. Please sign in. Hospital and NGO accounts need approval before full access.'
+        : 'Account created. Please sign in.';
+      navigation.reset({
+        index: 0,
+        routes: [{ name: ROUTES.LOGIN, params: { role, email: payload.email, notice } }],
+      });
     } catch (requestError) {
       setError(requestError?.response?.data?.message || (requestError?.message === 'Network Error'
         ? 'Cannot reach the server. Check your connection.'

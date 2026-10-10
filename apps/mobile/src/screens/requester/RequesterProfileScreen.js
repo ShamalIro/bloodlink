@@ -1,31 +1,17 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Card, SecondaryButton, Screen, StatusBadge } from '../../components';
-import useNearestHospital from '../../hooks/useNearestHospital';
 import { useAuth } from '../../store/AuthContext';
 import { colors, radius, spacing, typography } from '../../theme';
 
-const hospitalValue = ({ loading, hospital, distanceKm, reason }) => {
-  if (loading) return 'Finding nearest hospital...';
-  if (hospital) return `${hospital.name} \u00B7 ${distanceKm.toFixed(1)} km away`;
-  if (reason === 'permission') return 'Location access needed';
-  return 'Not available';
-};
+const menuItems = [
+  { label: 'Notification Settings', value: 'Uses application defaults', icon: 'bell-outline' },
+  { label: 'Privacy & Contact Sharing', value: 'Managed locally', icon: 'shield-account-outline' },
+];
 
 export default function RequesterProfileScreen() {
   const { user, signOut } = useAuth();
-  const nearest = useNearestHospital();
-  const reloadNearest = nearest.reload;
-
-  useEffect(() => { reloadNearest(); }, [reloadNearest]);
-
-  const menuItems = [
-    { label: 'Nearest Verified Hospital', value: hospitalValue(nearest), icon: 'hospital-building' },
-    { label: 'Notification Settings', value: 'Uses application defaults', icon: 'bell-outline' },
-    { label: 'Privacy & Contact Sharing', value: 'Managed locally', icon: 'shield-account-outline' },
-  ];
-
   const initials = (user?.name ?? 'BloodLink User').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
   return (
     <Screen scroll contentContainerStyle={styles.screen} safeAreaEdges={['top', 'left', 'right']}>

@@ -9,8 +9,7 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ service: 'camp-service', status: 'ok' }));
 
-// Mount routes here once you add them, e.g.:
-// app.use('/api', require('./routes'));
+app.use('/api/camps', require('./routes/camp.routes'));
 
 const PORT = process.env.PORT || 4006;
 
